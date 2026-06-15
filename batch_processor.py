@@ -209,13 +209,20 @@ def validate_image(
 
 
 def free_gpu_memory() -> None:
-    """Release unreferenced GPU memory after processing an image."""
-    import torch
+    """Release unreferenced GPU memory after processing an image.
 
+    Safe to call on CPU-only machines — the torch import is guarded
+    so that a missing PyTorch installation won't crash the batch processor.
+    """
     gc.collect()
-    if torch.cuda.is_available():
-        torch.cuda.empty_cache()
-        torch.cuda.synchronize()
+    try:
+        import torch
+
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+            torch.cuda.synchronize()
+    except ImportError:
+        pass  # No PyTorch available — nothing to free
 
 
 def _ensure_three_channel(img: np.ndarray) -> np.ndarray:
@@ -347,6 +354,9 @@ class BatchProcessor:
         """
         if not image_paths:
             self.logger.warning("No images to process.")
+            self.manifest = BatchManifest(
+                total=0, run_timestamp=datetime.utcnow().isoformat()
+            )
             return self.manifest
 
         # Load checkpoint for resume
